@@ -108,12 +108,12 @@ func (h *QuoteHandler) SendQuote(c *gin.Context) {
 		`, quote.QuoteNumber),
 	})
 
-	err = services.SendSMTPEmail(services.SMTPConfig{
-		Host:     h.Cfg.SMTPHost,
-		Port:     h.Cfg.SMTPPort,
-		Username: h.Cfg.SMTPUsername,
-		Password: h.Cfg.SMTPPassword,
-		From:     h.Cfg.EmailFrom,
+	err = services.SendEmail(services.EmailConfig{
+		Region:    h.Cfg.AWSRegion,
+		AccessKey: h.Cfg.AWSAccessKey,
+		SecretKey: h.Cfg.AWSSecretKey,
+		From:      h.Cfg.EmailFrom,
+		FromName:  h.Cfg.EmailFromName,
 	}, []string{quote.Contact.Email}, subject, htmlBody)
 
 	if err != nil {

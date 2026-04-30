@@ -121,7 +121,7 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		BodyHTML:       "If you did not create this account, you can ignore this email.",
 	})
 
-	if err := services.SendSMTPEmail(h.smtpCfg(), []string{user.Email}, "Confirm your email", htmlBody); err != nil {
+	if err := services.SendEmail(h.emailCfg(), []string{user.Email}, "Confirm your email", htmlBody); err != nil {
 		fmt.Println("confirm email error:", err)
 	}
 
@@ -284,7 +284,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 			BodyHTML:       "If you did not request this, ignore this email.",
 		})
 
-		if err := services.SendSMTPEmail(h.smtpCfg(), []string{user.Email}, "Reset your password", htmlBody); err != nil {
+		if err := services.SendEmail(h.emailCfg(), []string{user.Email}, "Reset your password", htmlBody); err != nil {
 			fmt.Println("reset email error:", err)
 		}
 	}
@@ -357,7 +357,7 @@ func (h *AuthHandler) ResendConfirmation(c *gin.Context) {
 		ButtonURL:      verifyURL,
 	})
 
-	services.SendSMTPEmail(h.smtpCfg(), []string{user.Email}, "Confirm your email", htmlBody)
+	services.SendEmail(h.emailCfg(), []string{user.Email}, "Confirm your email", htmlBody)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Confirmation email sent."})
 }
@@ -393,13 +393,12 @@ func (h *AuthHandler) userResponse(u models.User) gin.H {
 	}
 }
 
-func (h *AuthHandler) smtpCfg() services.SMTPConfig {
-	return services.SMTPConfig{
-		Host:     h.Cfg.SMTPHost,
-		Port:     h.Cfg.SMTPPort,
-		Username: h.Cfg.SMTPUsername,
-		Password: h.Cfg.SMTPPassword,
-		From:     h.Cfg.EmailFrom,
-		FromName: h.Cfg.EmailFromName,
+func (h *AuthHandler) emailCfg() services.EmailConfig {
+	return services.EmailConfig{
+		Region:    h.Cfg.AWSRegion,
+		AccessKey: h.Cfg.AWSAccessKey,
+		SecretKey: h.Cfg.AWSSecretKey,
+		From:      h.Cfg.EmailFrom,
+		FromName:  h.Cfg.EmailFromName,
 	}
 }

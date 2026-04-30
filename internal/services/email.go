@@ -1,46 +1,86 @@
 package services
 
 import (
-	"bytes"
+	"context"
 	"fmt"
-	"net/smtp"
 	"strings"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sesv2"
+	"github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 )
 
-type SMTPConfig struct {
-	Host     string
-	Port     string
-	Username string
-	Password string
-	From     string
-	FromName string
+type EmailConfig struct {
+	Region    string
+	AccessKey string
+	SecretKey string
+	From      string
+	FromName  string
 }
 
-func SendSMTPEmail(cfg SMTPConfig, to []string, subject string, htmlBody string) error {
-	if cfg.Host == "" || cfg.Port == "" || cfg.From == "" {
-		return fmt.Errorf("smtp config incomplete")
+func SendEmail(cfg EmailConfig, to []string, subject string, htmlBody string) error {
+	if cfg.Region == "" || cfg.AccessKey == "" || cfg.SecretKey == "" || cfg.From == "" {
+		return fmt.Errorf("email config incomplete")
 	}
 
+	recipients := make([]string, 0, len(to))
+	for _, addr := range to {
+		addr = strings.TrimSpace(addr)
+		if addr != "" {
+			recipients = append(recipients, addr)
+		}
+	}
+
+	if len(recipients) == 0 {
+		return fmt.Errorf("no email recipients supplied")
+	}
+
+	from := strings.TrimSpace(cfg.From)
 	fromName := strings.TrimSpace(cfg.FromName)
-	if fromName == "" {
-		fromName = "QuotePad"
+
+	if fromName != "" {
+		from = fmt.Sprintf("%s <%s>", fromName, from)
 	}
 
-	var msg bytes.Buffer
-	msg.WriteString(fmt.Sprintf("From: %s <%s>\r\n", fromName, cfg.From))
-	msg.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(to, ",")))
-	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
-	msg.WriteString("MIME-Version: 1.0\r\n")
-	msg.WriteString("Content-Type: text/html; charset=\"UTF-8\"\r\n")
-	msg.WriteString("\r\n")
-	msg.WriteString(htmlBody)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
-	addr := fmt.Sprintf("%s:%s", cfg.Host, cfg.Port)
-
-	var auth smtp.Auth
-	if cfg.Username != "" && cfg.Password != "" {
-		auth = smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
+	awsCfg, err := awsconfig.LoadDefaultConfig(
+		ctx,
+		awsconfig.WithRegion(cfg.Region),
+		awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(cfg.AccessKey, cfg.SecretKey, ""),
+		),
+	)
+	if err != nil {
+		return err
 	}
 
-	return smtp.SendMail(addr, auth, cfg.From, to, msg.Bytes())
+	client := sesv2.NewFromConfig(awsCfg)
+
+	_, err = client.SendEmail(ctx, &sesv2.SendEmailInput{
+		FromEmailAddress: aws.String(from),
+		Destination: &types.Destination{
+			ToAddresses: recipients,
+		},
+		Content: &types.EmailContent{
+			Simple: &types.Message{
+				Subject: &types.Content{
+					Data:    aws.String(subject),
+					Charset: aws.String("UTF-8"),
+				},
+				Body: &types.Body{
+					Html: &types.Content{
+						Data:    aws.String(htmlBody),
+						Charset: aws.String("UTF-8"),
+					},
+				},
+			},
+		},
+	})
+
+	return err
 }
