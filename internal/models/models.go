@@ -16,6 +16,9 @@ type User struct {
 	Phone                  string     `json:"phone"`
 	LogoURL                string     `json:"logoUrl"`
 	LogoFilename           string     `json:"logoFilename"`
+	StripeCustomerID       string     `gorm:"index" json:"stripeCustomerId"`
+	StripeSubscriptionID   string     `gorm:"index" json:"stripeSubscriptionId"`
+	SubscriptionStatus     string     `gorm:"default:incomplete" json:"subscriptionStatus"`
 	CreatedAt              time.Time  `json:"createdAt"`
 	UpdatedAt              time.Time  `json:"updatedAt"`
 	Contacts               []Contact  `json:"contacts,omitempty"`

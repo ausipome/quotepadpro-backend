@@ -28,6 +28,9 @@ type Config struct {
 	SMTPPassword        string
 	DefaultEmailLogoURL string
 	EmailFromName       string
+	StripeSecretKey     string
+	StripeWebhookSecret string
+	StripePriceID       string
 }
 
 func Load() *Config {
@@ -54,6 +57,9 @@ func Load() *Config {
 		SMTPPassword:        os.Getenv("SMTP_PASSWORD"),
 		DefaultEmailLogoURL: os.Getenv("DEFAULT_EMAIL_LOGO_URL"),
 		EmailFromName:       os.Getenv("EMAIL_FROM_NAME"),
+		StripeSecretKey:     os.Getenv("STRIPE_SECRET_KEY"),
+		StripeWebhookSecret: os.Getenv("STRIPE_WEBHOOK_SECRET"),
+		StripePriceID:       os.Getenv("STRIPE_PRICE_ID"),
 	}
 
 	if cfg.DatabaseURL == "" {

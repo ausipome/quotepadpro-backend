@@ -382,14 +382,17 @@ func (h *AuthHandler) getUser(c *gin.Context) *models.User {
 
 func (h *AuthHandler) userResponse(u models.User) gin.H {
 	return gin.H{
-		"id":            u.ID,
-		"name":          u.Name,
-		"email":         u.Email,
-		"emailVerified": u.EmailVerified,
-		"businessName":  u.BusinessName,
-		"phone":         u.Phone,
-		"logoUrl":       u.LogoURL,
-		"logoFilename":  u.LogoFilename,
+		"id":                   u.ID,
+		"name":                 u.Name,
+		"email":                u.Email,
+		"emailVerified":        u.EmailVerified,
+		"businessName":         u.BusinessName,
+		"phone":                u.Phone,
+		"logoUrl":              u.LogoURL,
+		"logoFilename":         u.LogoFilename,
+		"stripeCustomerId":     u.StripeCustomerID,
+		"stripeSubscriptionId": u.StripeSubscriptionID,
+		"subscriptionStatus":   u.SubscriptionStatus,
 	}
 }
 

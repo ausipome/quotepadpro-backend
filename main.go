@@ -31,6 +31,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(database, cfg)
 	contactHandler := handlers.NewContactHandler(database)
 	quoteHandler := handlers.NewQuoteHandler(database, cfg)
+	billingHandler := handlers.NewBillingHandler(database, cfg)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
@@ -62,6 +63,7 @@ func main() {
 	r.POST("/auth/forgot-password", authHandler.ForgotPassword)
 	r.POST("/auth/reset-password", authHandler.ResetPassword)
 	r.POST("/auth/resend-confirmation", authHandler.ResendConfirmation)
+	r.POST("/billing/webhook", billingHandler.StripeWebhook)
 
 	protected := r.Group("/")
 	protected.Use(handlers.AuthMiddleware(cfg))
@@ -69,6 +71,8 @@ func main() {
 	protected.GET("/me", authHandler.Me)
 	protected.PUT("/me", authHandler.UpdateMe)
 	protected.POST("/me/logo", authHandler.UploadLogo)
+
+	protected.POST("/billing/create-checkout-session", billingHandler.CreateCheckoutSession)
 
 	protected.POST("/contacts", contactHandler.Create)
 	protected.GET("/contacts", contactHandler.List)

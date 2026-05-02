@@ -51,6 +51,9 @@ type QuoteRequest struct {
 
 func (h *QuoteHandler) SendQuote(c *gin.Context) {
 	userID := c.MustGet("userId").(uint)
+	if !ensureSubscribed(h.DB, userID, c) {
+		return
+	}
 
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -132,6 +135,22 @@ func (h *QuoteHandler) SendQuote(c *gin.Context) {
 	})
 }
 
+func ensureSubscribed(db *gorm.DB, userID uint, c *gin.Context) bool {
+	var user models.User
+	if err := db.First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+		return false
+	}
+
+	status := strings.ToLower(strings.TrimSpace(user.SubscriptionStatus))
+	if status == "trialing" || status == "active" {
+		return true
+	}
+
+	c.JSON(http.StatusPaymentRequired, gin.H{"error": "An active subscription or trial is required to use this feature."})
+	return false
+}
+
 func nextQuoteNumber(db *gorm.DB, userID uint) (string, error) {
 	var count int64
 	if err := db.Model(&models.Quote{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
@@ -197,6 +216,9 @@ func buildQuoteItems(items []QuoteItemRequest) []models.QuoteItem {
 
 func (h *QuoteHandler) Create(c *gin.Context) {
 	userID := c.MustGet("userId").(uint)
+	if !ensureSubscribed(h.DB, userID, c) {
+		return
+	}
 
 	var req QuoteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
