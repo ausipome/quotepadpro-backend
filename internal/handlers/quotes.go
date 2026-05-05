@@ -113,8 +113,8 @@ func (h *QuoteHandler) SendQuote(c *gin.Context) {
 
 	err = services.SendEmail(services.EmailConfig{
 		Region:    h.Cfg.AWSRegion,
-		AccessKey: h.Cfg.AWSAccessKey,
-		SecretKey: h.Cfg.AWSSecretKey,
+		AccessKey: h.Cfg.AWSSESAccessKey,
+		SecretKey: h.Cfg.AWSSESSecretKey,
 		From:      h.Cfg.EmailFrom,
 		FromName:  h.Cfg.EmailFromName,
 	}, []string{quote.Contact.Email}, subject, htmlBody)
