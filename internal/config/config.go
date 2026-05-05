@@ -19,13 +19,11 @@ type Config struct {
 	AWSRegion           string
 	AWSAccessKey        string
 	AWSSecretKey        string
+	AWSSESAccessKey     string
+	AWSSESSecretKey     string
 	S3Bucket            string
 	S3LogoPrefix        string
 	S3PublicBase        string
-	SMTPHost            string
-	SMTPPort            string
-	SMTPUsername        string
-	SMTPPassword        string
 	DefaultEmailLogoURL string
 	EmailFromName       string
 	StripeSecretKey     string
@@ -48,13 +46,11 @@ func Load() *Config {
 		AWSRegion:           os.Getenv("AWS_REGION"),
 		AWSAccessKey:        os.Getenv("AWS_ACCESS_KEY_ID"),
 		AWSSecretKey:        os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		AWSSESAccessKey:     os.Getenv("AWS_SES_ACCESS_KEY_ID"),
+		AWSSESSecretKey:     os.Getenv("AWS_SES_SECRET_ACCESS_KEY"),
 		S3Bucket:            os.Getenv("S3_BUCKET"),
 		S3LogoPrefix:        getEnv("S3_LOGO_PREFIX", "logos"),
 		S3PublicBase:        os.Getenv("S3_PUBLIC_BASE_URL"),
-		SMTPHost:            os.Getenv("SMTP_HOST"),
-		SMTPPort:            os.Getenv("SMTP_PORT"),
-		SMTPUsername:        os.Getenv("SMTP_USERNAME"),
-		SMTPPassword:        os.Getenv("SMTP_PASSWORD"),
 		DefaultEmailLogoURL: os.Getenv("DEFAULT_EMAIL_LOGO_URL"),
 		EmailFromName:       os.Getenv("EMAIL_FROM_NAME"),
 		StripeSecretKey:     os.Getenv("STRIPE_SECRET_KEY"),
