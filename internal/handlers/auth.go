@@ -51,9 +51,10 @@ type ResendConfirmationRequest struct {
 }
 
 type UpdateMeRequest struct {
-	Name         string `json:"name"`
-	BusinessName string `json:"businessName"`
-	Phone        string `json:"phone"`
+	Name            string `json:"name"`
+	BusinessName    string `json:"businessName"`
+	BusinessAddress string `json:"businessAddress"`
+	Phone           string `json:"phone"`
 }
 
 func (h *AuthHandler) Signup(c *gin.Context) {
@@ -183,6 +184,7 @@ func (h *AuthHandler) UpdateMe(c *gin.Context) {
 
 	user.Name = req.Name
 	user.BusinessName = req.BusinessName
+	user.BusinessAddress = req.BusinessAddress
 	user.Phone = req.Phone
 
 	h.DB.Save(user)
@@ -387,6 +389,7 @@ func (h *AuthHandler) userResponse(u models.User) gin.H {
 		"email":                u.Email,
 		"emailVerified":        u.EmailVerified,
 		"businessName":         u.BusinessName,
+		"businessAddress":      u.BusinessAddress,
 		"phone":                u.Phone,
 		"logoUrl":              u.LogoURL,
 		"logoFilename":         u.LogoFilename,

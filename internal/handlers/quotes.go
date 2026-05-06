@@ -466,11 +466,12 @@ func (h *QuoteHandler) PublicGet(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"quote": quote,
 		"owner": gin.H{
-			"name":         user.Name,
-			"businessName": user.BusinessName,
-			"phone":        user.Phone,
-			"logoUrl":      user.LogoURL,
-			"email":        user.Email,
+			"name":            user.Name,
+			"businessName":    user.BusinessName,
+			"businessAddress": user.BusinessAddress,
+			"phone":           user.Phone,
+			"logoUrl":         user.LogoURL,
+			"email":           user.Email,
 		},
 	})
 }
