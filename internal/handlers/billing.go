@@ -1,3 +1,5 @@
+// quotepadpro-backend/internal/handlers/billing.go
+
 package handlers
 
 import (
@@ -65,7 +67,10 @@ func (h *BillingHandler) CreateCheckoutSession(c *gin.Context) {
 
 		var customer stripeCustomerResponse
 		if err := h.postStripeForm("/v1/customers", values, &customer); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create Stripe customer"})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "failed to create Stripe customer",
+				"details": err.Error(),
+			})
 			return
 		}
 
@@ -73,6 +78,7 @@ func (h *BillingHandler) CreateCheckoutSession(c *gin.Context) {
 		if user.SubscriptionStatus == "" {
 			user.SubscriptionStatus = "incomplete"
 		}
+
 		if err := h.DB.Save(&user).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save Stripe customer"})
 			return
@@ -97,7 +103,10 @@ func (h *BillingHandler) CreateCheckoutSession(c *gin.Context) {
 
 	var session stripeSessionResponse
 	if err := h.postStripeForm("/v1/checkout/sessions", values, &session); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create checkout session"})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "failed to create checkout session",
+			"details": err.Error(),
+		})
 		return
 	}
 
@@ -131,8 +140,23 @@ func (h *BillingHandler) StripeWebhook(c *gin.Context) {
 	switch event.Type {
 	case "checkout.session.completed":
 		h.handleCheckoutCompleted(event.Data.Object)
-	case "customer.subscription.updated", "customer.subscription.deleted":
+
+	case "customer.subscription.created",
+		"customer.subscription.updated",
+		"customer.subscription.deleted":
 		h.handleSubscriptionChanged(event.Data.Object)
+
+	case "invoice.paid":
+		h.handleInvoicePaid(event.Data.Object)
+
+	case "invoice.payment_failed":
+		h.handleInvoicePaymentFailed(event.Data.Object)
+
+	case "invoice.payment_action_required":
+		h.handleInvoicePaymentActionRequired(event.Data.Object)
+
+	case "invoice.finalization_failed":
+		h.handleInvoiceFinalizationFailed(event.Data.Object)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"received": true})
@@ -178,6 +202,70 @@ func (h *BillingHandler) handleSubscriptionChanged(obj map[string]any) {
 	h.DB.Model(&models.User{}).Where("stripe_customer_id = ?", customerID).Updates(updates)
 }
 
+func (h *BillingHandler) handleInvoicePaid(obj map[string]any) {
+	customerID := stringField(obj, "customer")
+	subscriptionID := stringField(obj, "subscription")
+
+	if customerID == "" {
+		return
+	}
+
+	updates := map[string]any{
+		"stripe_subscription_id": subscriptionID,
+		"subscription_status":    "active",
+	}
+
+	h.DB.Model(&models.User{}).Where("stripe_customer_id = ?", customerID).Updates(updates)
+}
+
+func (h *BillingHandler) handleInvoicePaymentFailed(obj map[string]any) {
+	customerID := stringField(obj, "customer")
+	subscriptionID := stringField(obj, "subscription")
+
+	if customerID == "" {
+		return
+	}
+
+	updates := map[string]any{
+		"stripe_subscription_id": subscriptionID,
+		"subscription_status":    "past_due",
+	}
+
+	h.DB.Model(&models.User{}).Where("stripe_customer_id = ?", customerID).Updates(updates)
+}
+
+func (h *BillingHandler) handleInvoicePaymentActionRequired(obj map[string]any) {
+	customerID := stringField(obj, "customer")
+	subscriptionID := stringField(obj, "subscription")
+
+	if customerID == "" {
+		return
+	}
+
+	updates := map[string]any{
+		"stripe_subscription_id": subscriptionID,
+		"subscription_status":    "incomplete",
+	}
+
+	h.DB.Model(&models.User{}).Where("stripe_customer_id = ?", customerID).Updates(updates)
+}
+
+func (h *BillingHandler) handleInvoiceFinalizationFailed(obj map[string]any) {
+	customerID := stringField(obj, "customer")
+	subscriptionID := stringField(obj, "subscription")
+
+	if customerID == "" {
+		return
+	}
+
+	updates := map[string]any{
+		"stripe_subscription_id": subscriptionID,
+		"subscription_status":    "incomplete",
+	}
+
+	h.DB.Model(&models.User{}).Where("stripe_customer_id = ?", customerID).Updates(updates)
+}
+
 func (h *BillingHandler) postStripeForm(path string, values url.Values, out any) error {
 	req, err := http.NewRequest(http.MethodPost, "https://api.stripe.com"+path, bytes.NewBufferString(values.Encode()))
 	if err != nil {
@@ -211,6 +299,7 @@ func verifyStripeSignature(payload []byte, header string, secret string) bool {
 		if len(kv) != 2 {
 			continue
 		}
+
 		switch kv[0] {
 		case "t":
 			timestamp = kv[1]
@@ -238,6 +327,7 @@ func verifyStripeSignature(payload []byte, header string, secret string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -246,14 +336,17 @@ func metadataUserID(obj map[string]any) uint {
 	if !ok {
 		return 0
 	}
+
 	raw, ok := metadata["userId"].(string)
 	if !ok || raw == "" {
 		return 0
 	}
+
 	parsed, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil {
 		return 0
 	}
+
 	return uint(parsed)
 }
 
@@ -262,5 +355,6 @@ func stringField(obj map[string]any, key string) string {
 	if !ok {
 		return ""
 	}
+
 	return val
 }
