@@ -49,6 +49,10 @@ type QuoteRequest struct {
 	Items         []QuoteItemRequest `json:"items"`
 }
 
+func NewQuoteHandler(db *gorm.DB, cfg *config.Config) *QuoteHandler {
+	return &QuoteHandler{DB: db, Cfg: cfg}
+}
+
 func (h *QuoteHandler) SendQuote(c *gin.Context) {
 	userID := c.MustGet("userId").(uint)
 	if !ensureSubscribed(h.DB, userID, c) {
@@ -72,6 +76,11 @@ func (h *QuoteHandler) SendQuote(c *gin.Context) {
 
 	if quote.Contact == nil || strings.TrimSpace(quote.Contact.Email) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "quote contact has no email address"})
+		return
+	}
+
+	if isQuoteExpired(quote) && quote.Status != "accepted" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "This quote has expired. Update the expiry date before sending it."})
 		return
 	}
 
@@ -130,8 +139,9 @@ func (h *QuoteHandler) SendQuote(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"sent": true,
-		"to":   quote.Contact.Email,
+		"sent":   true,
+		"to":     quote.Contact.Email,
+		"status": quote.Status,
 	})
 }
 
@@ -166,16 +176,11 @@ func todayDatePtr() *time.Time {
 	return &d
 }
 
-func NewQuoteHandler(db *gorm.DB, cfg *config.Config) *QuoteHandler {
-	return &QuoteHandler{DB: db, Cfg: cfg}
-}
-
 func parseDatePtr(input *string) (*time.Time, error) {
 	if input == nil || strings.TrimSpace(*input) == "" {
 		return nil, nil
 	}
 
-	// Accept YYYY-MM-DD
 	t, err := time.Parse("2006-01-02", strings.TrimSpace(*input))
 	if err != nil {
 		return nil, err
@@ -238,12 +243,9 @@ func (h *QuoteHandler) Create(c *gin.Context) {
 		req.Title = "Quote"
 	}
 
-	publicID := randomPublicID()
-
 	quote := models.Quote{
 		UserID:        userID,
 		ContactID:     req.ContactID,
-		QuoteNumber:   "",
 		Title:         strings.TrimSpace(req.Title),
 		Status:        normalizeQuoteStatus(req.Status),
 		QuoteDate:     quoteDate,
@@ -256,7 +258,7 @@ func (h *QuoteHandler) Create(c *gin.Context) {
 		VATRate:       req.VATRate,
 		VATAmount:     req.VATAmount,
 		Total:         req.Total,
-		PublicID:      publicID,
+		PublicID:      randomPublicID(),
 		Items:         buildQuoteItems(req.Items),
 	}
 
@@ -341,6 +343,8 @@ func (h *QuoteHandler) Update(c *gin.Context) {
 		return
 	}
 
+	wasAccepted := quote.Status == "accepted"
+
 	var req QuoteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
@@ -364,6 +368,10 @@ func (h *QuoteHandler) Update(c *gin.Context) {
 	quote.ContactID = req.ContactID
 	quote.Title = strings.TrimSpace(req.Title)
 	quote.Status = normalizeQuoteStatus(req.Status)
+	if wasAccepted {
+		quote.Status = statusAfterAcceptedEdit(req.Status)
+		quote.AcceptedAt = nil
+	}
 	quote.ExpiryDate = expiryDate
 	quote.Notes = strings.TrimSpace(req.Notes)
 	quote.Subtotal = req.Subtotal
@@ -451,7 +459,6 @@ func (h *QuoteHandler) PublicGet(c *gin.Context) {
 		Where("public_id = ?", publicID).
 		Preload("Items").
 		Preload("Contact").
-		Preload("Contact").
 		First(&quote).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "quote not found"})
 		return
@@ -464,7 +471,8 @@ func (h *QuoteHandler) PublicGet(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"quote": quote,
+		"quote":     quote,
+		"isExpired": isQuoteExpired(quote),
 		"owner": gin.H{
 			"name":            user.Name,
 			"businessName":    user.BusinessName,
@@ -480,8 +488,18 @@ func (h *QuoteHandler) PublicAccept(c *gin.Context) {
 	publicID := c.Param("publicId")
 
 	var quote models.Quote
-	if err := h.DB.Where("public_id = ?", publicID).First(&quote).Error; err != nil {
+	if err := h.DB.Preload("Contact").Where("public_id = ?", publicID).First(&quote).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "quote not found"})
+		return
+	}
+
+	if quote.Status == "accepted" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "This quote has already been accepted."})
+		return
+	}
+
+	if isQuoteExpired(quote) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "This quote has expired and can no longer be accepted."})
 		return
 	}
 
@@ -492,6 +510,13 @@ func (h *QuoteHandler) PublicAccept(c *gin.Context) {
 	if err := h.DB.Save(&quote).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to accept quote"})
 		return
+	}
+
+	var owner models.User
+	if err := h.DB.First(&owner, quote.UserID).Error; err == nil {
+		if err := h.sendQuoteAcceptedEmail(quote, owner); err != nil {
+			fmt.Println("quote accepted email error:", err)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
