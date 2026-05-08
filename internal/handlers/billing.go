@@ -45,6 +45,12 @@ type stripeSessionResponse struct {
 	ClientSecret string `json:"client_secret"`
 }
 
+type stripeSubscriptionResponse struct {
+	ID                string `json:"id"`
+	Status            string `json:"status"`
+	CancelAtPeriodEnd bool   `json:"cancel_at_period_end"`
+}
+
 func (h *BillingHandler) CreateCheckoutSession(c *gin.Context) {
 	userID := c.MustGet("userId").(uint)
 
@@ -113,6 +119,62 @@ func (h *BillingHandler) CreateCheckoutSession(c *gin.Context) {
 	c.JSON(http.StatusOK, createCheckoutSessionResponse{ClientSecret: session.ClientSecret})
 }
 
+func (h *BillingHandler) CancelSubscription(c *gin.Context) {
+	userID := c.MustGet("userId").(uint)
+
+	if h.Cfg.StripeSecretKey == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Stripe is not configured"})
+		return
+	}
+
+	var user models.User
+	if err := h.DB.First(&user, userID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	if user.StripeSubscriptionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No active Stripe subscription was found for this account"})
+		return
+	}
+
+	values := url.Values{}
+	values.Set("cancel_at_period_end", "true")
+
+	var subscription stripeSubscriptionResponse
+	if err := h.postStripeForm("/v1/subscriptions/"+url.PathEscape(user.StripeSubscriptionID), values, &subscription); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "failed to cancel subscription",
+			"details": err.Error(),
+		})
+		return
+	}
+
+	updates := map[string]any{
+		"cancel_at_period_end": true,
+	}
+
+	if subscription.Status != "" {
+		updates["subscription_status"] = subscription.Status
+	}
+
+	if subscription.ID != "" {
+		updates["stripe_subscription_id"] = subscription.ID
+	}
+
+	if err := h.DB.Model(&models.User{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update subscription status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":             "Subscription will cancel at the end of the current period",
+		"subscriptionStatus":  subscription.Status,
+		"cancelAtPeriodEnd":   true,
+		"stripeSubscriptionId": user.StripeSubscriptionID,
+	})
+}
+
 func (h *BillingHandler) StripeWebhook(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -175,6 +237,7 @@ func (h *BillingHandler) handleCheckoutCompleted(obj map[string]any) {
 		"stripe_customer_id":     customerID,
 		"stripe_subscription_id": subscriptionID,
 		"subscription_status":    "trialing",
+		"cancel_at_period_end":   false,
 	}
 
 	if userID != 0 {
@@ -197,6 +260,7 @@ func (h *BillingHandler) handleSubscriptionChanged(obj map[string]any) {
 	updates := map[string]any{
 		"stripe_subscription_id": subscriptionID,
 		"subscription_status":    status,
+		"cancel_at_period_end":   boolField(obj, "cancel_at_period_end"),
 	}
 
 	h.DB.Model(&models.User{}).Where("stripe_customer_id = ?", customerID).Updates(updates)
@@ -357,4 +421,9 @@ func stringField(obj map[string]any, key string) string {
 	}
 
 	return val
+}
+
+func boolField(obj map[string]any, key string) bool {
+	val, ok := obj[key].(bool)
+	return ok && val
 }
