@@ -73,6 +73,7 @@ func main() {
 	protected.POST("/me/logo", authHandler.UploadLogo)
 
 	protected.POST("/billing/create-checkout-session", billingHandler.CreateCheckoutSession)
+	protected.POST("/billing/cancel-subscription", billingHandler.CancelSubscription)
 
 	protected.POST("/contacts", contactHandler.Create)
 	protected.GET("/contacts", contactHandler.List)
