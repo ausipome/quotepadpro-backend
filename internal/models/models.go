@@ -13,13 +13,14 @@ type User struct {
 	ResetPasswordToken     string     `json:"-"`
 	ResetPasswordExpiresAt *time.Time `json:"-"`
 	BusinessName           string     `json:"businessName"`
-	BusinessAddress string `json:"businessAddress"`
+	BusinessAddress        string     `json:"businessAddress"`
 	Phone                  string     `json:"phone"`
 	LogoURL                string     `json:"logoUrl"`
 	LogoFilename           string     `json:"logoFilename"`
 	StripeCustomerID       string     `gorm:"index" json:"stripeCustomerId"`
 	StripeSubscriptionID   string     `gorm:"index" json:"stripeSubscriptionId"`
 	SubscriptionStatus     string     `gorm:"default:incomplete" json:"subscriptionStatus"`
+	CancelAtPeriodEnd      bool       `gorm:"default:false" json:"cancelAtPeriodEnd"`
 	CreatedAt              time.Time  `json:"createdAt"`
 	UpdatedAt              time.Time  `json:"updatedAt"`
 	Contacts               []Contact  `json:"contacts,omitempty"`
